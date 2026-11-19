@@ -1,16 +1,16 @@
 /**
- * app.js — Tablespot Dashboard
+ * app.js — Tablespot Dashboard (Revisi 2)
  *
  * Arsitektur:
- *   - firebase-config.js : konfigurasi Firebase (diisi pengguna)
- *   - Data layer         : fungsi-fungsi yang membaca Firebase & menyimpan state
- *   - Render layer       : fungsi-fungsi yang menulis ke DOM berdasar state
- *   - Controller         : menghubungkan data layer ke render layer
+ *   - firebase-config.js    : konfigurasi Firebase (diisi pengguna)
+ *   - LAYOUT / MEJA_CONFIG  : konstanta tata letak denah — ubah di sini tanpa menyentuh logika
+ *   - Data layer            : fungsi-fungsi yang membaca Firebase & memperbarui state
+ *   - Logic layer           : hitung peringatan, ringkasan, format waktu
+ *   - Render layer          : fungsi-fungsi yang menulis ke DOM berdasarkan state
+ *   - Controller            : menghubungkan data layer ke render layer, auth, event UI
  *
- * Firebase SDK dimuat via CDN (ES module shim), sehingga file ini
- * menggunakan import statis di atas. Tidak ada npm, tidak ada build step.
- *
- * HANYA MEMBACA dari Firebase. Tidak ada penulisan ke database.
+ * Firebase SDK dimuat via CDN (ES module). Tidak ada npm, tidak ada build step.
+ * HANYA MEMBACA dari Firebase. Tidak ada penulisan sama sekali.
  */
 
 // ============================================================
@@ -27,20 +27,46 @@ import {
 import { firebaseConfig }                       from "./firebase-config.js";
 
 // ============================================================
-// Konfigurasi kafe (sesuai spesifikasi)
+// LAYOUT — tata letak denah bioskop
+// Ubah konstanta ini untuk menyesuaikan susunan meja di kafe.
+// Setiap baris berisi array objek { mejaId, kursi[] }.
 // ============================================================
 
-/** Daftar meja dengan kursi-kursi miliknya */
-const MEJA_CONFIG = [
-  { id: "M1", kursi: ["K1", "K2"] },
-  { id: "M2", kursi: ["K3", "K4"] },
-  { id: "M3", kursi: ["K5"] },
-  { id: "M4", kursi: ["K6"] },
-  { id: "M5", kursi: ["K7"] },
+/**
+ * LAYOUT mendeskripsikan susunan fisik meja dalam denah.
+ * Baris pertama = bagian paling jauh dari pintu masuk.
+ * Baris terakhir = paling dekat pintu masuk.
+ *
+ * Untuk mengubah tata letak:
+ *   1. Susun ulang objek di dalam array baris.
+ *   2. Tambah/hapus baris dengan menambah/hapus array dalam LAYOUT.
+ *   3. Jangan ubah id meja / kursi — harus sesuai dengan data Firebase.
+ */
+const LAYOUT = [
+  // Baris atas (jauh dari pintu)
+  [
+    { mejaId: "M1", kursi: ["K1", "K2"] },
+    { mejaId: "M2", kursi: ["K3", "K4"] },
+  ],
+  // Baris bawah (dekat pintu)
+  [
+    { mejaId: "M3", kursi: ["K5"] },
+    { mejaId: "M4", kursi: ["K6"] },
+    { mejaId: "M5", kursi: ["K7"] },
+  ],
 ];
+
+/** Daftar meja datar — dipakai oleh fungsi-fungsi lain */
+const MEJA_CONFIG = LAYOUT.flat();
 
 /** Jam operasional yang dilacak statistiknya */
 const JAM_RANGE = Array.from({ length: 15 }, (_, i) => String(i + 8).padStart(2, "0")); // "08".."22"
+
+/** Semua id kursi yang dikenal */
+const SEMUA_KURSI = MEJA_CONFIG.flatMap(m => m.kursi);
+
+/** Semua id meja yang dikenal */
+const SEMUA_MEJA = MEJA_CONFIG.map(m => m.mejaId);
 
 // ============================================================
 // State global (diisi oleh data layer, dibaca oleh render layer)
@@ -48,11 +74,12 @@ const JAM_RANGE = Array.from({ length: 15 }, (_, i) => String(i + 8).padStart(2,
 
 const state = {
   // Denah
-  tables: {},          // { M1: {status, since}, ... }
-  seats:  {},          // { K1: {table, status, since}, ... }
-  beatLastChanged: null, // Date.now() saat beat terakhir berubah
+  tables: {},            // { M1: {status, since}, ... }
+  seats:  {},            // { K1: {table, status, since}, ... }
+  beatLastChanged: null, // Date.now() saat nilai beat terakhir berubah
   beatValue: null,       // nilai beat terakhir
   beatOfflineTimer: null,// id setInterval pengecekan offline
+  sistemOffline: false,  // true jika beat >30 detik tidak berubah
 
   // Statistik
   statsJamKerja:      {},  // { "08": 0.5, ... }
@@ -64,6 +91,9 @@ const state = {
 
   // Auth
   currentUser: null,
+
+  // Tooltip denah (id elemen yang sedang menampilkan keterangan)
+  denahTooltipTarget: null,
 };
 
 // ============================================================
@@ -81,7 +111,7 @@ try {
     "Gagal menghubungkan ke Firebase",
     "Pastikan firebase-config.js sudah diisi dengan benar. Error: " + err.message
   );
-  throw err; // hentikan eksekusi selanjutnya
+  throw err;
 }
 
 // ============================================================
@@ -96,9 +126,9 @@ try {
  */
 function formatRelative(since) {
   if (!since) return "—";
-  const diff = Math.floor((Date.now() - since) / 1000); // detik
-  if (diff < 10)  return "baru saja";
-  if (diff < 60)  return `${diff} detik lalu`;
+  const diff = Math.floor((Date.now() - since) / 1000);
+  if (diff < 10)   return "baru saja";
+  if (diff < 60)   return `${diff} detik lalu`;
   if (diff < 3600) {
     const m = Math.floor(diff / 60);
     return `${m} menit lalu`;
@@ -112,7 +142,7 @@ function formatRelative(since) {
 }
 
 /**
- * Kembalikan label teks status dalam bahasa Indonesia.
+ * Kembalikan label teks status dalam Bahasa Indonesia.
  * @param {"available"|"occupied"|"offline"|string} status
  * @returns {string}
  */
@@ -126,7 +156,7 @@ function labelStatus(status) {
 }
 
 /**
- * Kembalikan ikon (karakter unicode) untuk status.
+ * Kembalikan ikon unicode untuk status.
  * @param {"available"|"occupied"|"offline"|string} status
  * @returns {string}
  */
@@ -190,113 +220,89 @@ function esc(str) {
 }
 
 // ============================================================
-// Data Layer — membaca Firebase
+// Logic Layer — Hitung Peringatan
 // ============================================================
 
 /**
- * Pasang semua listener realtime untuk data denah:
- *   tables/, seats/, system/beat
- * Setiap listener memanggil fungsi render setelah memperbarui state.
+ * @typedef {Object} Peringatan
+ * @property {"sistem"|"esp32"|"sensor"} tipe
+ * @property {string} judul
+ * @property {string} rincian
+ * @property {number|null} since   - epoch ms (untuk tipe "sensor")
  */
-function startDenahListeners() {
-  // --- tables/ ---
-  onValue(
-    ref(db, "tables"),
-    (snap) => {
-      state.tables = snap.val() || {};
-      renderDenah();
-    },
-    (err) => {
-      renderDenahError(err);
-    }
-  );
 
-  // --- seats/ ---
-  onValue(
-    ref(db, "seats"),
-    (snap) => {
-      state.seats = snap.val() || {};
-      renderDenah();
-    },
-    (err) => {
-      renderDenahError(err);
-    }
-  );
+/**
+ * Hitung daftar peringatan aktif berdasarkan state saat ini.
+ * Tidak menyentuh Firebase sama sekali — murni kalkulasi dari state.
+ *
+ * Prioritas:
+ *   (a) Jika sistem offline → hanya tampilkan peringatan (a).
+ *   (b) Jika beat oke tapi SEMUA kursi offline → peringatan (b).
+ *   (c) Jika beat oke dan hanya SEBAGIAN kursi offline → peringatan (c) per kursi.
+ *
+ * @returns {Peringatan[]}
+ */
+function hitungPeringatan() {
+  const peringatan = [];
 
-  // --- system/beat ---
-  onValue(
-    ref(db, "system/beat"),
-    (snap) => {
-      const val = snap.val();
-      // Deteksi perubahan: catat waktu lokal saat nilai beat berubah
-      if (val !== state.beatValue) {
-        state.beatValue       = val;
-        state.beatLastChanged = Date.now();
-        renderBeatBanner(false); // beat baru → banner hilang
-      }
-    },
-    (_err) => {
-      // Gagal baca beat: anggap offline
-      state.beatLastChanged = null;
-      renderBeatBanner(true);
-    }
-  );
+  // (a) Sistem hilang
+  if (state.sistemOffline) {
+    peringatan.push({
+      tipe: "sistem",
+      judul: "Sistem di kafe tidak terhubung",
+      rincian: "Bridge atau komputer kafe berhenti. Data yang tampil mungkin tidak terbaru.",
+      since: null,
+    });
+    return peringatan; // (a) → jangan cek (b) dan (c)
+  }
 
-  // Cek beat setiap 5 detik; tampilkan banner jika >30 detik tidak berubah
-  state.beatOfflineTimer = setInterval(() => {
-    if (state.beatLastChanged === null) return;
-    const usia = Date.now() - state.beatLastChanged;
-    renderBeatBanner(usia > 30_000);
-  }, 5_000);
+  // Cek status kursi
+  const kursiOffline = SEMUA_KURSI.filter(id => {
+    const s = state.seats[id];
+    return !s || s.status === "offline";
+  });
+
+  // (b) Semua kursi offline padahal beat masih jalan
+  if (kursiOffline.length === SEMUA_KURSI.length && SEMUA_KURSI.length > 0) {
+    peringatan.push({
+      tipe: "esp32",
+      judul: "Perangkat sensor (ESP32) tidak mengirim data",
+      rincian: "Periksa daya dan koneksi WiFi perangkat ESP32 di kafe.",
+      since: null,
+    });
+    return peringatan;
+  }
+
+  // (c) Sebagian kursi offline
+  for (const id of kursiOffline) {
+    const s       = state.seats[id] || {};
+    const mejaId  = s.table || cariMejaUntukKursi(id);
+    const sinceMs = s.since || null;
+    peringatan.push({
+      tipe: "sensor",
+      judul: `Sensor kursi ${id} (Meja ${mejaId}) tidak mengirim data`,
+      rincian: `Periksa kabel dan posisi sensor pada kursi ${id}.`,
+      since: sinceMs,
+    });
+  }
+
+  return peringatan;
 }
 
 /**
- * Pasang listener untuk semua data statistik (hanya saat sudah login).
+ * Cari id meja pemilik sebuah kursi berdasarkan LAYOUT.
+ * @param {string} kursiId
+ * @returns {string}
  */
-function startStatsListeners() {
-  // stats/jam/kerja
-  onValue(ref(db, "stats/jam/kerja"), (snap) => {
-    state.statsJamKerja = snap.val() || {};
-    renderStatsChart();
-  });
-
-  // stats/jam/akhir_pekan
-  onValue(ref(db, "stats/jam/akhir_pekan"), (snap) => {
-    state.statsJamAkhirPekan = snap.val() || {};
-    renderStatsChart();
-  });
-
-  // stats/jam/tersibuk
-  onValue(ref(db, "stats/jam/tersibuk"), (snap) => {
-    state.statsJamTersibuk = snap.val() || {};
-    renderStatsSummaryCards();
-  });
-
-  // stats/hari_ini
-  onValue(ref(db, "stats/hari_ini"), (snap) => {
-    state.statsHariIni = snap.val() || {};
-    renderStatsSummaryCards();
-  });
-
-  // stats/meja (semua meja sekaligus)
-  onValue(ref(db, "stats/meja"), (snap) => {
-    state.statsMeja = snap.val() || {};
-    renderStatsMejaTable();
-  });
-
-  // stats/updated
-  onValue(ref(db, "stats/updated"), (snap) => {
-    state.statsUpdated = snap.val();
-    renderStatsUpdated();
-  });
+function cariMejaUntukKursi(kursiId) {
+  for (const m of MEJA_CONFIG) {
+    if (m.kursi.includes(kursiId)) return m.mejaId;
+  }
+  return "?";
 }
 
-// ============================================================
-// Hitung ringkasan dari state
-// ============================================================
-
 /**
- * Hitung jumlah kursi kosong (available) dan meja kosong (available).
+ * Hitung jumlah kursi kosong dan meja kosong dari state.
  * Offline TIDAK dihitung kosong.
  * @returns {{ kursiKosong: number, mejaKosong: number }}
  */
@@ -304,14 +310,12 @@ function hitungRingkasan() {
   let kursiKosong = 0;
   let mejaKosong  = 0;
 
-  // Kursi: iterasi seats/
-  for (const id of ["K1","K2","K3","K4","K5","K6","K7"]) {
+  for (const id of SEMUA_KURSI) {
     const s = state.seats[id];
     if (s && s.status === "available") kursiKosong++;
   }
 
-  // Meja: iterasi tables/
-  for (const id of ["M1","M2","M3","M4","M5"]) {
+  for (const id of SEMUA_MEJA) {
     const t = state.tables[id];
     if (t && t.status === "available") mejaKosong++;
   }
@@ -320,10 +324,115 @@ function hitungRingkasan() {
 }
 
 // ============================================================
-// Render Layer — Denah
+// Data Layer — membaca Firebase (hanya onValue, tidak ada set/push)
 // ============================================================
 
-/** Referensi elemen DOM yang dipakai oleh render layer */
+/**
+ * Pasang semua listener realtime untuk data denah:
+ *   tables/, seats/, system/beat
+ * Setiap perubahan data memperbarui state dan memanggil fungsi render.
+ * Listener tidak pernah dipasang dua kali karena fungsi ini hanya dipanggil
+ * satu kali dari main().
+ */
+function startDenahListeners() {
+  // --- tables/ ---
+  onValue(
+    ref(db, "tables"),
+    (snap) => {
+      state.tables = snap.val() || {};
+      renderDenah();
+      renderPeringatan(); // peringatan bergantung pada status meja/kursi
+    },
+    (err) => { renderDenahError(err); }
+  );
+
+  // --- seats/ ---
+  onValue(
+    ref(db, "seats"),
+    (snap) => {
+      state.seats = snap.val() || {};
+      renderDenah();
+      renderPeringatan();
+    },
+    (err) => { renderDenahError(err); }
+  );
+
+  // --- system/beat ---
+  onValue(
+    ref(db, "system/beat"),
+    (snap) => {
+      const val = snap.val();
+      // Catat waktu lokal hanya saat nilai beat benar-benar berubah
+      if (val !== state.beatValue) {
+        state.beatValue       = val;
+        state.beatLastChanged = Date.now();
+        state.sistemOffline   = false;
+        renderBeatBanner(false);
+        renderPeringatan(); // beat pulih → perbarui peringatan
+      }
+    },
+    (_err) => {
+      state.beatLastChanged = null;
+      state.sistemOffline   = true;
+      renderBeatBanner(true);
+      renderPeringatan();
+    }
+  );
+
+  // Cek beat setiap 5 detik; tampilkan banner dan peringatan jika >30 detik
+  state.beatOfflineTimer = setInterval(() => {
+    if (state.beatLastChanged === null) return;
+    const usia            = Date.now() - state.beatLastChanged;
+    const akanOffline     = usia > 30_000;
+    const statusBerubah   = akanOffline !== state.sistemOffline;
+    state.sistemOffline   = akanOffline;
+    renderBeatBanner(akanOffline);
+    if (statusBerubah) renderPeringatan(); // hanya render ulang saat kondisi berubah
+  }, 5_000);
+}
+
+/**
+ * Pasang listener untuk semua data statistik (hanya setelah login).
+ * Firebase SDK sudah idempoten — tidak masalah dipanggil ulang saat
+ * user logout-login lagi, karena listener sebelumnya masih aktif pada
+ * ref yang sama.
+ */
+function startStatsListeners() {
+  onValue(ref(db, "stats/jam/kerja"), (snap) => {
+    state.statsJamKerja = snap.val() || {};
+    renderStatsChart();
+  });
+
+  onValue(ref(db, "stats/jam/akhir_pekan"), (snap) => {
+    state.statsJamAkhirPekan = snap.val() || {};
+    renderStatsChart();
+  });
+
+  onValue(ref(db, "stats/jam/tersibuk"), (snap) => {
+    state.statsJamTersibuk = snap.val() || {};
+    renderStatsSummaryCards();
+  });
+
+  onValue(ref(db, "stats/hari_ini"), (snap) => {
+    state.statsHariIni = snap.val() || {};
+    renderStatsSummaryCards();
+  });
+
+  onValue(ref(db, "stats/meja"), (snap) => {
+    state.statsMeja = snap.val() || {};
+    renderStatsMejaTable();
+  });
+
+  onValue(ref(db, "stats/updated"), (snap) => {
+    state.statsUpdated = snap.val();
+    renderStatsUpdated();
+  });
+}
+
+// ============================================================
+// Referensi elemen DOM
+// ============================================================
+
 const el = {
   bannerWarn:      () => document.getElementById("banner-warn"),
   denahContainer:  () => document.getElementById("denah-container"),
@@ -344,91 +453,215 @@ const el = {
   chartToggleKerja:     () => document.getElementById("chart-toggle-kerja"),
   chartToggleAkhirPekan:() => document.getElementById("chart-toggle-akhirpekan"),
   chartCanvas:     () => document.getElementById("occupancy-chart"),
-  statsMejaTableBody: () => document.getElementById("stats-meja-tbody"),
-  statsUpdatedLabel:  () => document.getElementById("stats-updated-label"),
+  statsMejaTableBody:  () => document.getElementById("stats-meja-tbody"),
+  statsUpdatedLabel:   () => document.getElementById("stats-updated-label"),
   noDataChartMsg:  () => document.getElementById("no-data-chart"),
   noDataMejaMsg:   () => document.getElementById("no-data-meja"),
+  perigatanPanel:  () => document.getElementById("peringatan-panel"),
+  perigatanList:   () => document.getElementById("peringatan-list"),
+  tabStatistik:    () => document.getElementById("tab-statistik"),
 };
 
+// ============================================================
+// Render Layer — Denah (gaya bioskop)
+// ============================================================
+
 /**
- * Tampilkan/sembunyikan banner peringatan beat.
+ * Tampilkan/sembunyikan banner peringatan beat (publik, tab Denah).
  * @param {boolean} tampil
  */
 function renderBeatBanner(tampil) {
   const banner = el.bannerWarn();
   if (!banner) return;
-  if (tampil) {
-    banner.classList.remove("hidden");
-  } else {
-    banner.classList.add("hidden");
-  }
+  banner.classList.toggle("hidden", !tampil);
 }
 
 /**
- * Render seluruh tab Denah dari state.tables dan state.seats.
+ * SVG ikon kursi sederhana (inline).
+ * @returns {string} SVG HTML
+ */
+function svgKursi() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <rect x="4" y="3" width="16" height="9" rx="2"/>
+    <rect x="3" y="10" width="18" height="3" rx="1.5"/>
+    <rect x="5" y="13" width="3" height="6" rx="1"/>
+    <rect x="16" y="13" width="3" height="6" rx="1"/>
+    <rect x="6" y="18" width="12" height="2" rx="1"/>
+  </svg>`;
+}
+
+/**
+ * Render seluruh tab Denah (denah bioskop) dari state.
+ * Menjaga tooltip yang sedang terbuka jika target-nya masih valid.
  */
 function renderDenah() {
   const container = el.denahContainer();
   if (!container) return;
 
-  // Bersihkan pesan loading/error sebelumnya
   container.innerHTML = buildDenahHTML();
 
-  // Perbarui ringkasan
-  renderSummary();
+  // Pasang event listener klik pada setiap elemen interaktif denah
+  container.querySelectorAll("[data-denah-id]").forEach(elem => {
+    elem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id      = elem.dataset.denahId;
+      const tipe    = elem.dataset.denahTipe; // "meja" atau "kursi"
+      toggleDenahTooltip(elem, id, tipe);
+    });
+    // Keyboard: Enter / Space membuka keterangan
+    elem.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        elem.click();
+      }
+    });
+  });
 
-  // Perbarui timestamp
+  renderSummary();
   renderLastUpdated();
 }
 
 /**
- * Bangun HTML grid meja + kursi dari state.
- * @returns {string} HTML string
+ * Membangun HTML denah bioskop dari LAYOUT.
+ * @returns {string}
  */
 function buildDenahHTML() {
-  return `<div class="meja-grid">
-    ${MEJA_CONFIG.map(meja => buildMejaCardHTML(meja)).join("")}
-  </div>`;
+  const baris = LAYOUT.map((row, iRow) => {
+    const mejaCells = row.map(({ mejaId, kursi }) =>
+      buildMejaCellHTML(mejaId, kursi)
+    ).join("");
+    return `<div class="denah-baris" data-baris="${iRow}">${mejaCells}</div>`;
+  }).join("");
+
+  const legendaHTML = `
+    <div class="denah-legenda" aria-label="Legenda status">
+      <span class="denah-legenda__item">
+        <span class="denah-legenda__dot denah-legenda__dot--available"></span>
+        <span class="icon" aria-hidden="true">✓</span> Kosong
+      </span>
+      <span class="denah-legenda__item">
+        <span class="denah-legenda__dot denah-legenda__dot--occupied"></span>
+        <span class="icon" aria-hidden="true">●</span> Terisi
+      </span>
+      <span class="denah-legenda__item">
+        <span class="denah-legenda__dot denah-legenda__dot--offline"></span>
+        <span class="icon" aria-hidden="true">○</span> Offline
+      </span>
+    </div>`;
+
+  const pintuHTML = `
+    <div class="denah-pintu" aria-label="Pintu masuk kafe">
+      <div class="denah-pintu__garis"></div>
+      <span class="denah-pintu__label">🚪 Pintu Masuk</span>
+    </div>`;
+
+  return `
+    <div class="denah-wrapper">
+      ${legendaHTML}
+      <div class="denah-area" id="denah-area" role="img" aria-label="Denah kafe — klik meja atau kursi untuk keterangan">
+        ${baris}
+      </div>
+      ${pintuHTML}
+      <div id="denah-tooltip" class="denah-tooltip hidden" role="status" aria-live="polite"></div>
+    </div>`;
 }
 
 /**
- * Bangun HTML satu kartu meja beserta kursi-kursinya.
- * @param {{ id: string, kursi: string[] }} meja
+ * Bangun HTML satu sel meja beserta kursi-kursinya (gaya bioskop).
+ * @param {string} mejaId
+ * @param {string[]} kursi
  * @returns {string}
  */
-function buildMejaCardHTML({ id, kursi }) {
-  const mejaData  = state.tables[id] || {};
-  const status    = mejaData.status || "offline";
-  const sinceMs   = mejaData.since  || null;
-  const sinceText = formatRelative(sinceMs);
+function buildMejaCellHTML(mejaId, kursi) {
+  const mejaData = state.tables[mejaId] || {};
+  const ms       = mejaData.status || "offline";
 
+  // Kursi di atas meja
   const kursiHTML = kursi.map(kId => {
     const k   = state.seats[kId] || {};
     const ks  = k.status || "offline";
-    return `<span class="kursi-chip kursi-chip--${classStatus(ks)}"
-                  role="img"
-                  aria-label="${esc(kId)}: ${esc(labelStatus(ks))}">
-              <span class="icon" aria-hidden="true">${esc(ikonStatus(ks))}</span>
-              ${esc(kId)}
-            </span>`;
+    return `<button
+      class="denah-kursi denah-kursi--${classStatus(ks)}"
+      data-denah-id="${esc(kId)}"
+      data-denah-tipe="kursi"
+      aria-label="Kursi ${esc(kId)}, ${esc(labelStatus(ks))}"
+      type="button"
+    >${svgKursi()}<span class="denah-kursi__label">${esc(kId)}</span></button>`;
   }).join("");
 
   return `
-    <article class="meja-card" aria-label="Meja ${esc(id)}">
-      <div class="meja-card__header">
-        <span class="meja-card__id">${esc(id)}</span>
-        <span class="status-badge status-badge--${classStatus(status)}"
-              role="status"
-              aria-label="Status: ${esc(labelStatus(status))}">
-          <span class="icon" aria-hidden="true">${esc(ikonStatus(status))}</span>
-          ${esc(labelStatus(status))}
+    <div class="denah-meja-cell">
+      <div class="denah-kursi-row">${kursiHTML}</div>
+      <button
+        class="denah-meja denah-meja--${classStatus(ms)}"
+        data-denah-id="${esc(mejaId)}"
+        data-denah-tipe="meja"
+        aria-label="Meja ${esc(mejaId)}, ${esc(labelStatus(ms))}"
+        type="button"
+      >
+        <span class="denah-meja__id">${esc(mejaId)}</span>
+        <span class="denah-meja__badge">
+          <span class="icon" aria-hidden="true">${esc(ikonStatus(ms))}</span>
+          ${esc(labelStatus(ms))}
         </span>
-      </div>
-      <p class="meja-card__since">Sejak: ${esc(sinceText)}</p>
-      <div class="kursi-list" aria-label="Kursi di meja ${esc(id)}">
-        ${kursiHTML}
-      </div>
-    </article>`;
+      </button>
+    </div>`;
+}
+
+/**
+ * Tampilkan atau sembunyikan tooltip keterangan meja/kursi.
+ * Mengetuk elemen yang sama menutup tooltip.
+ * @param {HTMLElement} targetElem
+ * @param {string} id   - id meja atau kursi
+ * @param {"meja"|"kursi"} tipe
+ */
+function toggleDenahTooltip(targetElem, id, tipe) {
+  const tooltip = document.getElementById("denah-tooltip");
+  if (!tooltip) return;
+
+  // Tutup jika target yang sama diklik lagi
+  if (state.denahTooltipTarget === id) {
+    tooltip.classList.add("hidden");
+    state.denahTooltipTarget = null;
+    return;
+  }
+
+  state.denahTooltipTarget = id;
+
+  let nama, status, sinceMs;
+  if (tipe === "meja") {
+    const d  = state.tables[id] || {};
+    nama     = `Meja ${id}`;
+    status   = d.status || "offline";
+    sinceMs  = d.since  || null;
+  } else {
+    const d  = state.seats[id] || {};
+    const mejaId = d.table || cariMejaUntukKursi(id);
+    nama     = `Kursi ${id} (Meja ${mejaId})`;
+    status   = d.status || "offline";
+    sinceMs  = d.since  || null;
+  }
+
+  const sinceText = formatRelative(sinceMs);
+  const cls       = classStatus(status);
+
+  tooltip.className = `denah-tooltip denah-tooltip--${cls}`;
+  tooltip.innerHTML = `
+    <strong>${esc(nama)}</strong>
+    <span class="denah-tooltip__status">
+      <span class="icon" aria-hidden="true">${esc(ikonStatus(status))}</span>
+      ${esc(labelStatus(status))}
+    </span>
+    <span class="denah-tooltip__since">Sejak: ${esc(sinceText)}</span>
+    <button class="denah-tooltip__close" type="button" aria-label="Tutup keterangan">×</button>`;
+
+  tooltip.querySelector(".denah-tooltip__close").addEventListener("click", (e) => {
+    e.stopPropagation();
+    tooltip.classList.add("hidden");
+    state.denahTooltipTarget = null;
+  });
+
+  tooltip.classList.remove("hidden");
 }
 
 /**
@@ -439,8 +672,8 @@ function renderSummary() {
   if (!bar) return;
   const { kursiKosong, mejaKosong } = hitungRingkasan();
   bar.innerHTML = `
-    <span class="summary-chip">🪑 ${esc(String(kursiKosong))} dari 7 kursi kosong</span>
-    <span class="summary-chip">🪵 ${esc(String(mejaKosong))} dari 5 meja kosong</span>
+    <span class="summary-chip">🪑 ${esc(String(kursiKosong))} dari ${SEMUA_KURSI.length} kursi kosong</span>
+    <span class="summary-chip">🪵 ${esc(String(mejaKosong))} dari ${SEMUA_MEJA.length} meja kosong</span>
   `;
 }
 
@@ -451,7 +684,7 @@ function renderLastUpdated() {
   const lbl = el.lastUpdated();
   if (!lbl) return;
   const now = new Date().toLocaleTimeString("id-ID", {
-    hour: "2-digit", minute: "2-digit", second: "2-digit"
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
   lbl.textContent = `Terakhir diperbarui: ${now}`;
 }
@@ -492,14 +725,102 @@ function renderFatalError(judul, pesan) {
 }
 
 // ============================================================
+// Render Layer — Panel Peringatan (staf, tab Statistik)
+// ============================================================
+
+/**
+ * Render daftar peringatan aktif di panel peringatan staf.
+ * Panel hanya terlihat setelah login (tersembunyi di HTML awalnya).
+ * Juga memperbarui lencana angka di tombol tab dan judul browser.
+ */
+function renderPeringatan() {
+  // Panel hanya dirender jika staf sudah login
+  if (!state.currentUser) return;
+
+  const panel = el.perigatanPanel();
+  const list  = el.perigatanList();
+  if (!panel || !list) return;
+
+  const daftar = hitungPeringatan();
+
+  // Lencana angka di tombol tab Statistik
+  renderTabBadge(daftar.length);
+
+  // Judul browser: awali dengan "(!)" jika ada peringatan
+  const judulDasar = "Tablespot Dashboard";
+  document.title   = daftar.length > 0 ? `(!) ${judulDasar}` : judulDasar;
+
+  if (daftar.length === 0) {
+    list.innerHTML = `
+      <p class="peringatan-kosong">
+        <span aria-hidden="true">✅</span> Tidak ada peringatan. Semua sensor normal.
+      </p>`;
+    return;
+  }
+
+  list.innerHTML = daftar.map(p => {
+    const ikonTipe = p.tipe === "sistem" ? "🔌" : p.tipe === "esp32" ? "📡" : "⚠️";
+    const sinceHTML = p.since
+      ? `<span class="peringatan-since">Sejak: ${esc(formatRelative(p.since))}</span>`
+      : "";
+    return `
+      <div class="peringatan-item peringatan-item--${esc(p.tipe)}" role="alert">
+        <span class="peringatan-item__ikon" aria-hidden="true">${ikonTipe}</span>
+        <div class="peringatan-item__body">
+          <strong class="peringatan-item__judul">${esc(p.judul)}</strong>
+          <span class="peringatan-item__rincian">${esc(p.rincian)}</span>
+          ${sinceHTML}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+/**
+ * Tampilkan atau sembunyikan lencana angka merah di tombol tab Statistik.
+ * @param {number} jumlah
+ */
+function renderTabBadge(jumlah) {
+  const tabBtn = el.tabStatistik();
+  if (!tabBtn) return;
+
+  // Hapus lencana lama jika ada
+  const lama = tabBtn.querySelector(".tab-badge");
+  if (lama) lama.remove();
+
+  if (jumlah > 0) {
+    const badge = document.createElement("span");
+    badge.className   = "tab-badge";
+    badge.textContent = String(jumlah);
+    badge.setAttribute("aria-label", `${jumlah} peringatan`);
+    tabBtn.appendChild(badge);
+  }
+}
+
+// ============================================================
 // Render Layer — Statistik
 // ============================================================
 
-/** Instance Chart.js aktif (agar bisa di-destroy sebelum dibuat ulang) */
+/** Instance Chart.js aktif */
 let chartInstance = null;
 
 /** Mode grafik saat ini: "kerja" atau "akhir_pekan" */
 let chartMode = "kerja";
+
+/**
+ * Bangun HTML tombol info (ⓘ) dengan keterangan yang bisa diketuk.
+ * @param {string} idPopup - id unik untuk elemen popup
+ * @param {string} keterangan - teks keterangan
+ * @returns {string}
+ */
+function infoBtn(idPopup, keterangan) {
+  return `<button
+    class="info-btn"
+    type="button"
+    aria-label="Keterangan: ${esc(keterangan)}"
+    data-info-id="${esc(idPopup)}"
+    data-info-text="${esc(keterangan)}"
+  >ⓘ</button><span class="info-popup hidden" id="${esc(idPopup)}" role="tooltip">${esc(keterangan)}</span>`;
+}
 
 /**
  * Tampilkan form login, sembunyikan konten statistik.
@@ -509,6 +830,12 @@ function renderLoginForm() {
   const sc = el.statsContent();
   if (lw) lw.style.display = "";
   if (sc) sc.style.display = "none";
+
+  // Sembunyikan peringatan dan bersihkan badge saat logout
+  const panel = el.perigatanPanel();
+  if (panel) panel.style.display = "none";
+  renderTabBadge(0);
+  document.title = "Tablespot Dashboard";
 }
 
 /**
@@ -516,19 +843,25 @@ function renderLoginForm() {
  * @param {import("firebase/auth").User} user
  */
 function renderStatsLoggedIn(user) {
-  const lw  = el.loginWrapper();
-  const sc  = el.statsContent();
-  const lbl = el.statsUserLabel();
-  if (lw)  lw.style.display  = "none";
-  if (sc)  sc.style.display  = "";
-  if (lbl) lbl.textContent   = user.email;
+  const lw    = el.loginWrapper();
+  const sc    = el.statsContent();
+  const lbl   = el.statsUserLabel();
+  const panel = el.perigatanPanel();
+  if (lw)    lw.style.display    = "none";
+  if (sc)    sc.style.display    = "";
+  if (panel) panel.style.display = "";
+  if (lbl)   lbl.textContent     = user.email;
 
-  // Mulai listener statistik (idempoten karena Firebase SDK sudah handle ini)
+  // Render peringatan sekarang karena state.currentUser baru saja diset
+  renderPeringatan();
+
+  // Mulai listener statistik (Firebase SDK sudah idempoten)
   startStatsListeners();
 }
 
 /**
  * Render kartu ringkasan statistik hari ini + jam tersibuk.
+ * Setiap kartu mendapat tombol info ⓘ yang bisa diketuk.
  */
 function renderStatsSummaryCards() {
   const container = el.statsCards();
@@ -537,32 +870,48 @@ function renderStatsSummaryCards() {
   const hi = state.statsHariIni;
   const jt = state.statsJamTersibuk;
 
-  const jamTersibukKerja     = jt.kerja       ? `Pukul ${jt.kerja}:00`      : "—";
-  const jamTersibukAkhirPekan= jt.akhir_pekan ? `Pukul ${jt.akhir_pekan}:00` : "—";
+  const jamKerja     = jt.kerja       ? `Pukul ${jt.kerja}:00`       : "—";
+  const jamAkhirPekan= jt.akhir_pekan ? `Pukul ${jt.akhir_pekan}:00` : "—";
 
   container.innerHTML = `
     <div class="stat-card">
-      <p class="stat-card__label">Jam Tersibuk (Hari Kerja)</p>
-      <p class="stat-card__value">${esc(jamTersibukKerja)}</p>
+      <p class="stat-card__label">
+        Jam Tersibuk (Hari Kerja)
+        ${infoBtn("info-jam-kerja", "Jam dengan rata-rata okupansi di atas 80% pada hari kerja (Senin–Jumat).")}
+      </p>
+      <p class="stat-card__value">${esc(jamKerja)}</p>
     </div>
     <div class="stat-card">
-      <p class="stat-card__label">Jam Tersibuk (Akhir Pekan)</p>
-      <p class="stat-card__value">${esc(jamTersibukAkhirPekan)}</p>
+      <p class="stat-card__label">
+        Jam Tersibuk (Akhir Pekan)
+        ${infoBtn("info-jam-akhirpekan", "Jam dengan rata-rata okupansi di atas 80% pada akhir pekan (Sabtu–Minggu).")}
+      </p>
+      <p class="stat-card__value">${esc(jamAkhirPekan)}</p>
     </div>
     <div class="stat-card">
-      <p class="stat-card__label">Giliran Hari Ini</p>
+      <p class="stat-card__label">
+        Giliran Hari Ini
+        ${infoBtn("info-giliran-harini", "Jumlah kali meja berubah dari kosong menjadi terisi hari ini. Pemakaian kurang dari 2 menit tidak dihitung.")}
+      </p>
       <p class="stat-card__value">${esc(String(hi.giliran ?? "—"))}</p>
     </div>
     <div class="stat-card">
-      <p class="stat-card__label">Rata-rata Lama Pemakaian</p>
+      <p class="stat-card__label">
+        Rata-rata Lama Pemakaian
+        ${infoBtn("info-rata-lama", "Rata-rata lama sekali duduk di kafe hari ini, dalam menit.")}
+      </p>
       <p class="stat-card__value">${esc(fmtMenit(hi.rata_lama_menit))}</p>
       <p class="stat-card__sub">hari ini</p>
     </div>
   `;
+
+  // Pasang event listener info tombol di kartu
+  container.querySelectorAll(".info-btn").forEach(btn => pasangInfoBtn(btn));
 }
 
 /**
  * Render / refresh grafik batang Chart.js sesuai chartMode.
+ * Jam dengan nilai > 80% disorot merah sebagai "ramai".
  */
 function renderStatsChart() {
   const canvas    = el.chartCanvas();
@@ -573,15 +922,14 @@ function renderStatsChart() {
     ? state.statsJamKerja
     : state.statsJamAkhirPekan;
 
-  // Cek apakah data tersedia
   const nilaiAda = JAM_RANGE.some(j => dataset[j] != null);
   if (!nilaiAda) {
-    canvas.style.display     = "none";
+    canvas.style.display = "none";
     if (noDataMsg) noDataMsg.style.display = "";
     return;
   }
 
-  canvas.style.display     = "";
+  canvas.style.display = "";
   if (noDataMsg) noDataMsg.style.display = "none";
 
   const labels = JAM_RANGE.map(j => `${j}:00`);
@@ -590,18 +938,15 @@ function renderStatsChart() {
     return v != null ? Math.round(v * 100) : 0;
   });
 
-  // Warna batang: merah muda jika >80%, biru sebaliknya
   const bgColors = values.map(v =>
     v > 80 ? "rgba(220,38,38,0.75)" : "rgba(37,99,235,0.75)"
   );
 
-  // Hancurkan chart lama sebelum membuat yang baru
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
 
-  // Chart.js harus dimuat lewat window.Chart (dimuat via CDN di index.html)
   if (typeof Chart === "undefined") {
     console.warn("[Tablespot] Chart.js belum dimuat.");
     return;
@@ -637,9 +982,7 @@ function renderStatsChart() {
         y: {
           min: 0,
           max: 100,
-          ticks: {
-            callback: (v) => v + "%",
-          },
+          ticks: { callback: (v) => v + "%" },
           grid: { color: "rgba(0,0,0,.06)" },
         },
         x: {
@@ -653,24 +996,22 @@ function renderStatsChart() {
 
 /**
  * Render tabel pemakaian per meja.
+ * Kolom header memiliki tombol info ⓘ yang bisa diketuk.
  */
 function renderStatsMejaTable() {
   const tbody     = el.statsMejaTableBody();
   const noDataMsg = el.noDataMejaMsg();
   if (!tbody) return;
 
-  const mejaIds    = ["M1","M2","M3","M4","M5"];
-  const adaData    = mejaIds.some(id => state.statsMeja[id] != null);
-
+  const adaData = SEMUA_MEJA.some(id => state.statsMeja[id] != null);
   if (!adaData) {
     tbody.innerHTML = "";
     if (noDataMsg) noDataMsg.style.display = "";
     return;
   }
-
   if (noDataMsg) noDataMsg.style.display = "none";
 
-  tbody.innerHTML = mejaIds.map(id => {
+  tbody.innerHTML = SEMUA_MEJA.map(id => {
     const d = state.statsMeja[id] || {};
     return `<tr>
       <td><strong>${esc(id)}</strong></td>
@@ -687,12 +1028,34 @@ function renderStatsMejaTable() {
 function renderStatsUpdated() {
   const lbl = el.statsUpdatedLabel();
   if (!lbl) return;
-  if (!state.statsUpdated) {
-    lbl.textContent = "";
-    return;
-  }
+  if (!state.statsUpdated) { lbl.textContent = ""; return; }
   const d = new Date(state.statsUpdated);
   lbl.textContent = `Statistik dihitung pada: ${d.toLocaleString("id-ID")}`;
+}
+
+// ============================================================
+// Logika tombol Info (ⓘ) — tab Statistik
+// ============================================================
+
+/**
+ * Pasang event listener klik pada sebuah tombol info.
+ * Mengetuk tombol yang sama menutup popup.
+ * @param {HTMLElement} btn
+ */
+function pasangInfoBtn(btn) {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const targetId = btn.dataset.infoId;
+    const popup    = document.getElementById(targetId);
+    if (!popup) return;
+
+    // Tutup popup lain yang sedang terbuka
+    document.querySelectorAll(".info-popup:not(.hidden)").forEach(p => {
+      if (p.id !== targetId) p.classList.add("hidden");
+    });
+
+    popup.classList.toggle("hidden");
+  });
 }
 
 // ============================================================
@@ -700,63 +1063,63 @@ function renderStatsUpdated() {
 // ============================================================
 
 /**
- * Terjemahkan kode error Firebase Auth ke bahasa Indonesia.
- * @param {string} code - error.code dari Firebase
+ * Terjemahkan kode error Firebase Auth ke Bahasa Indonesia.
+ * @param {string} code
  * @returns {string}
  */
 function terjemahkanErrorAuth(code) {
   switch (code) {
-    case "auth/invalid-email":
-      return "Format email tidak valid.";
+    case "auth/invalid-email":         return "Format email tidak valid.";
     case "auth/user-not-found":
     case "auth/wrong-password":
-    case "auth/invalid-credential":
-      return "Email atau kata sandi salah.";
-    case "auth/too-many-requests":
-      return "Terlalu banyak percobaan login. Coba lagi beberapa saat.";
-    case "auth/network-request-failed":
-      return "Gagal terhubung ke jaringan. Periksa koneksi internet.";
-    case "auth/user-disabled":
-      return "Akun ini telah dinonaktifkan.";
-    default:
-      return `Login gagal (${code}). Coba lagi.`;
+    case "auth/invalid-credential":    return "Email atau kata sandi salah.";
+    case "auth/too-many-requests":     return "Terlalu banyak percobaan login. Coba lagi beberapa saat.";
+    case "auth/network-request-failed":return "Gagal terhubung ke jaringan. Periksa koneksi internet.";
+    case "auth/user-disabled":         return "Akun ini telah dinonaktifkan.";
+    default:                           return `Login gagal (${code}). Coba lagi.`;
   }
 }
 
 /**
  * Tampilkan atau sembunyikan pesan error login.
- * @param {string|null} msg - null untuk menyembunyikan
+ * @param {string|null} msg
  */
 function setLoginError(msg) {
-  const el_err = el.loginError();
-  if (!el_err) return;
+  const elErr = el.loginError();
+  if (!elErr) return;
   if (msg) {
-    el_err.textContent = msg;
-    el_err.classList.remove("hidden");
+    elErr.textContent = msg;
+    elErr.classList.remove("hidden");
   } else {
-    el_err.classList.add("hidden");
+    elErr.classList.add("hidden");
   }
 }
 
 /**
- * Inisialisasi semua event listener UI.
- * Dipanggil sekali setelah DOM siap.
+ * Inisialisasi semua event listener UI (dipanggil sekali dari main).
  */
 function initUI() {
   // --- Tab switching ---
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const target = btn.dataset.tab;
-
-      // Aktifkan tombol tab
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-
-      // Tampilkan panel tab
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
       const panel = document.getElementById(`panel-${target}`);
       if (panel) panel.classList.add("active");
     });
+  });
+
+  // --- Tutup tooltip denah saat klik di luar ---
+  document.addEventListener("click", () => {
+    const tooltip = document.getElementById("denah-tooltip");
+    if (tooltip && !tooltip.classList.contains("hidden")) {
+      tooltip.classList.add("hidden");
+      state.denahTooltipTarget = null;
+    }
+    // Tutup popup info statistik
+    document.querySelectorAll(".info-popup:not(.hidden)").forEach(p => p.classList.add("hidden"));
   });
 
   // --- Toggle grafik hari kerja / akhir pekan ---
@@ -781,12 +1144,12 @@ function initUI() {
     });
   }
 
-  // --- Login form ---
+  // --- Login ---
   const loginBtn = el.loginBtn();
   if (loginBtn) {
     loginBtn.addEventListener("click", async () => {
-      const email    = el.loginEmail()?.value.trim()    || "";
-      const password = el.loginPassword()?.value || "";
+      const email    = el.loginEmail()?.value.trim() || "";
+      const password = el.loginPassword()?.value      || "";
 
       if (!email || !password) {
         setLoginError("Email dan kata sandi tidak boleh kosong.");
@@ -799,7 +1162,6 @@ function initUI() {
 
       try {
         await signInWithEmailAndPassword(auth, email, password);
-        // onAuthStateChanged akan menangani perubahan UI
       } catch (err) {
         setLoginError(terjemahkanErrorAuth(err.code));
       } finally {
@@ -808,7 +1170,6 @@ function initUI() {
       }
     });
 
-    // Tekan Enter di field kata sandi = klik tombol Masuk
     el.loginPassword()?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") loginBtn.click();
     });
@@ -819,11 +1180,10 @@ function initUI() {
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
       await signOut(auth);
-      // onAuthStateChanged menangani UI
     });
   }
 
-  // --- Auth state listener ---
+  // --- Auth state ---
   onAuthStateChanged(auth, (user) => {
     state.currentUser = user;
     if (user) {
@@ -835,11 +1195,11 @@ function initUI() {
 }
 
 // ============================================================
-// Bootstrap — dijalankan saat DOM siap
+// Bootstrap
 // ============================================================
 
 function main() {
-  // Tampilkan loading awal di tab Denah
+  // Loading awal di tab Denah
   const container = el.denahContainer();
   if (container) {
     container.innerHTML = `
@@ -850,14 +1210,10 @@ function main() {
       </div>`;
   }
 
-  // Mulai listener data denah (tidak butuh login)
   startDenahListeners();
-
-  // Inisialisasi semua event handler UI
   initUI();
 }
 
-// Tunggu DOM siap baru jalankan
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", main);
 } else {

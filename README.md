@@ -151,4 +151,66 @@ TableSpot Dashboard/
 
 ---
 
+## Mengubah Tata Letak Denah
+
+Tata letak denah didefinisikan oleh konstanta `LAYOUT` di bagian atas [`public/app.js`](public/app.js), bukan di HTML maupun CSS. Anda tidak perlu menyentuh logika render sama sekali.
+
+### Struktur LAYOUT
+
+```js
+const LAYOUT = [
+  // Setiap elemen array = satu baris di denah
+  // Baris pertama = paling jauh dari pintu masuk
+  [
+    { mejaId: "M1", kursi: ["K1", "K2"] },
+    { mejaId: "M2", kursi: ["K3", "K4"] },
+  ],
+  // Baris kedua = paling dekat pintu masuk
+  [
+    { mejaId: "M3", kursi: ["K5"] },
+    { mejaId: "M4", kursi: ["K6"] },
+    { mejaId: "M5", kursi: ["K7"] },
+  ],
+];
+```
+
+### Cara mengubah
+
+| Yang ingin diubah | Caranya |
+|---|---|
+| Pindahkan meja ke baris lain | Pindahkan objek `{ mejaId, kursi }` ke array baris lain |
+| Tambahkan baris baru | Tambahkan `[ ... ]` baru di dalam `LAYOUT` |
+| Ubah meja mana yang punya kursi apa | Edit array `kursi` pada objek yang sesuai |
+| Ganti nama tampilan meja/kursi | Jangan — `mejaId` dan `kursi` **harus** sesuai dengan path di Firebase (`tables/<mejaId>`, `seats/<kursiId>`) |
+
+Setelah disimpan dan halaman di-refresh, denah akan langsung menampilkan susunan baru.
+
+---
+
+## Aturan Peringatan
+
+Panel **Peringatan** muncul di bagian atas tab Statistik, hanya setelah staf login. Peringatan dihitung di sisi dashboard dari data yang sudah dibaca — tidak ada penulisan ke Firebase.
+
+### Tiga kondisi peringatan
+
+| # | Kondisi | Pesan yang ditampilkan |
+|---|---------|----------------------|
+| (a) | `system/beat` tidak berubah lebih dari 30 detik | "Sistem di kafe tidak terhubung (bridge atau komputer kafe berhenti). Data yang tampil mungkin tidak terbaru." |
+| (b) | Beat masih berjalan, tetapi **semua** kursi berstatus `offline` | "Perangkat sensor (ESP32) tidak mengirim data. Periksa daya dan WiFi." |
+| (c) | Beat masih berjalan, hanya **sebagian** kursi `offline` | Satu peringatan per kursi: "Sensor kursi K3 (Meja M2) tidak mengirim data. Periksa kabel dan posisi sensor." |
+
+### Prioritas
+
+Jika kondisi **(a)** aktif, peringatan **(b)** dan **(c)** tidak ditampilkan — data tidak dapat dipercaya saat sistem offline.
+
+### Hal yang perlu diketahui
+
+- Peringatan **hilang otomatis** saat kondisi pulih (tidak ada riwayat disimpan).
+- Peringatan hanya tampil **saat dashboard terbuka** dan staf sudah login — tidak ada notifikasi push.
+- Lencana angka merah muncul di tombol tab **Statistik** saat ada peringatan aktif.
+- Judul jendela browser akan diawali `(!)` saat ada peringatan.
+- Tab **Denah** (publik) hanya menampilkan banner "sistem tidak terhubung" untuk kondisi (a); rincian per sensor tidak ditampilkan ke publik.
+
+---
+
 *Proyek Akhir Semester — Informatika*

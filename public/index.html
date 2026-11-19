@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="style.css" />
 
   <!--
-    Chart.js v4.4.3 — dimuat via CDN cdnjs, versi dipin.
+    Chart.js v4.4.3 — CDN cdnjs, versi dipin.
     Dimuat SEBELUM app.js agar window.Chart tersedia saat grafik dirender.
   -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"
@@ -20,9 +20,8 @@
   </script>
 
   <!--
-    app.js dimuat sebagai ES module agar bisa menggunakan import statis
-    (Firebase SDK modular dari CDN gstatic, firebase-config.js).
-    defer bawaan untuk type="module".
+    app.js dimuat sebagai ES module (defer bawaan).
+    Menggunakan import statis: Firebase SDK modular dari CDN gstatic + firebase-config.js.
   -->
   <script type="module" src="app.js"></script>
 </head>
@@ -47,6 +46,10 @@
           id="tab-denah">
           Denah
         </button>
+        <!--
+          id="tab-statistik" dipakai app.js untuk:
+          - menambahkan lencana angka merah saat ada peringatan
+        -->
         <button
           class="tab-btn"
           role="tab"
@@ -60,7 +63,7 @@
     </div>
   </header>
 
-  <!-- Banner peringatan sistem offline -->
+  <!-- Banner peringatan sistem offline (publik, tab Denah) -->
   <div id="banner-warn" class="banner-warn hidden" role="alert" aria-live="assertive">
     ⚠ Sistem di kafe tidak terhubung, data mungkin tidak terbaru
   </div>
@@ -71,7 +74,7 @@
   <main class="main" role="main">
 
     <!-- ======================================================
-         Tab Denah (publik)
+         Tab Denah (publik, tanpa login)
          ====================================================== -->
     <section
       id="panel-denah"
@@ -86,7 +89,10 @@
         <!-- Diisi oleh app.js -->
       </div>
 
-      <!-- Grid kartu meja + kursi -->
+      <!--
+        Denah bioskop — diisi sepenuhnya oleh app.js (renderDenah / buildDenahHTML).
+        Berisi: legenda, baris meja+kursi, penanda pintu masuk, tooltip.
+      -->
       <div id="denah-container" aria-live="polite" aria-label="Denah meja dan kursi">
         <!-- Loading awal ditampilkan oleh app.js -->
         <div class="state-box">
@@ -115,7 +121,6 @@
         <div class="login-card" role="region" aria-label="Form login staf">
           <h2>Masuk sebagai Staf</h2>
 
-          <!-- Pesan error login -->
           <div id="login-error" class="login-error hidden" role="alert" aria-live="assertive"></div>
 
           <div class="form-group">
@@ -147,7 +152,7 @@
       <!-- === Konten Statistik (tampil setelah login) === -->
       <div id="stats-content" style="display:none;">
 
-        <!-- Header: email pengguna + tombol keluar -->
+        <!-- Header: email + tombol keluar -->
         <div class="stats-header">
           <div>
             <h1 class="section-title" style="margin-bottom:0;">Statistik Kafe</h1>
@@ -156,19 +161,35 @@
           <button id="logout-btn" class="btn-logout" type="button">Keluar</button>
         </div>
 
+        <!--
+          Panel Peringatan Staf — hanya tampil setelah login.
+          Berisi daftar peringatan sensor/sistem, diisi oleh renderPeringatan().
+          Disembunyikan oleh CSS (display:none) dan ditampilkan oleh renderStatsLoggedIn().
+        -->
+        <section id="peringatan-panel" class="peringatan-panel" aria-label="Panel peringatan sensor" style="display:none;">
+          <h2 class="peringatan-panel__title">
+            <span aria-hidden="true">🔔</span> Peringatan
+          </h2>
+          <div id="peringatan-list" aria-live="polite">
+            <!-- Diisi oleh renderPeringatan() di app.js -->
+          </div>
+        </section>
+
         <!-- Timestamp statistik -->
         <p id="stats-updated-label" class="stats-updated" aria-live="polite"></p>
 
-        <!-- Kartu ringkasan -->
+        <!-- Kartu ringkasan — diisi oleh renderStatsSummaryCards() -->
         <div id="stats-cards" class="stats-cards" aria-label="Ringkasan statistik">
           <!-- Diisi oleh app.js -->
         </div>
 
         <!-- Grafik okupansi per jam -->
         <div class="chart-section">
-          <p class="chart-section__title">Rata-rata Okupansi per Jam</p>
+          <p class="chart-section__title">
+            Rata-rata Okupansi per Jam
+            <span class="chart-section__hint">Batang merah = jam ramai (&gt;80%)</span>
+          </p>
 
-          <!-- Toggle hari kerja / akhir pekan -->
           <div class="chart-toggle" role="group" aria-label="Pilih periode">
             <button
               id="chart-toggle-kerja"
@@ -186,12 +207,10 @@
             </button>
           </div>
 
-          <!-- Canvas Chart.js -->
           <div class="chart-container" aria-label="Grafik batang okupansi per jam">
             <canvas id="occupancy-chart" aria-label="Grafik batang okupansi" role="img"></canvas>
           </div>
 
-          <!-- Pesan jika data belum tersedia -->
           <p id="no-data-chart" class="no-data" style="display:none;">
             Data belum cukup untuk statistik grafik ini.
           </p>
@@ -199,15 +218,72 @@
 
         <!-- Tabel pemakaian per meja -->
         <div class="table-section">
+          <!--
+            Blok lipat "Apa arti istilah ini?" — penjelasan istilah di tabel.
+            Selalu terlihat, tidak membutuhkan login tambahan.
+          -->
+          <details class="istilah-detail">
+            <summary class="istilah-detail__summary">Apa arti istilah ini?</summary>
+            <dl class="istilah-list">
+              <dt>Giliran</dt>
+              <dd>Berapa kali sebuah meja dipakai, yaitu berubah dari kosong menjadi terisi. Pemakaian kurang dari 2 menit tidak dihitung.</dd>
+
+              <dt>Rata-rata lama</dt>
+              <dd>Rata-rata lama sekali duduk di meja tersebut, dalam menit.</dd>
+
+              <dt>% waktu terisi</dt>
+              <dd>Persentase waktu meja terisi dibandingkan total jam operasional (08.00–22.00 WIB).</dd>
+
+              <dt>Jam ramai</dt>
+              <dd>Jam dengan rata-rata okupansi di atas 80% (ditandai batang merah di grafik).</dd>
+
+              <dt>Puncak hari ini</dt>
+              <dd>Jumlah meja terisi tertinggi hari ini beserta jamnya (ditampilkan di kartu ringkasan).</dd>
+            </dl>
+          </details>
+
           <p class="table-section__title">Pemakaian per Meja</p>
+
           <div class="stats-table-wrapper">
             <table class="stats-table" aria-label="Tabel pemakaian per meja">
               <thead>
                 <tr>
                   <th scope="col">Meja</th>
-                  <th scope="col">Giliran</th>
-                  <th scope="col">Rata-rata Lama</th>
-                  <th scope="col">% Waktu Terisi</th>
+                  <!--
+                    Tombol info ⓘ di header kolom dipasang lewat app.js (renderStatsMejaTable),
+                    namun header kolom sendiri bisa juga ditulis langsung di HTML karena tidak
+                    bergantung pada data Firebase. Kita pasang di sini agar selalu terlihat.
+                  -->
+                  <th scope="col">
+                    Giliran
+                    <button class="info-btn" type="button"
+                      aria-label="Keterangan: Jumlah kali meja dipakai hari ini. Pemakaian &lt;2 menit tidak dihitung."
+                      data-info-id="info-th-giliran"
+                      data-info-text="Jumlah kali meja dipakai hari ini. Pemakaian kurang dari 2 menit tidak dihitung.">ⓘ</button>
+                    <span class="info-popup hidden" id="info-th-giliran" role="tooltip">
+                      Jumlah kali meja dipakai hari ini. Pemakaian kurang dari 2 menit tidak dihitung.
+                    </span>
+                  </th>
+                  <th scope="col">
+                    Rata-rata Lama
+                    <button class="info-btn" type="button"
+                      aria-label="Keterangan: Rata-rata lama sekali duduk di meja tersebut, dalam menit."
+                      data-info-id="info-th-rata-lama"
+                      data-info-text="Rata-rata lama sekali duduk di meja tersebut, dalam menit.">ⓘ</button>
+                    <span class="info-popup hidden" id="info-th-rata-lama" role="tooltip">
+                      Rata-rata lama sekali duduk di meja tersebut, dalam menit.
+                    </span>
+                  </th>
+                  <th scope="col">
+                    % Waktu Terisi
+                    <button class="info-btn" type="button"
+                      aria-label="Keterangan: Persentase waktu meja terisi dibandingkan jam operasional 08.00–22.00 WIB."
+                      data-info-id="info-th-persen"
+                      data-info-text="Persentase waktu meja terisi dibandingkan jam operasional 08.00–22.00 WIB.">ⓘ</button>
+                    <span class="info-popup hidden" id="info-th-persen" role="tooltip">
+                      Persentase waktu meja terisi dibandingkan jam operasional 08.00–22.00 WIB.
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody id="stats-meja-tbody">
@@ -216,7 +292,6 @@
             </table>
           </div>
 
-          <!-- Pesan jika data belum tersedia -->
           <p id="no-data-meja" class="no-data" style="display:none;">
             Data belum cukup untuk statistik per meja.
           </p>
@@ -229,6 +304,27 @@
   </main><!-- /.main -->
 
 </div><!-- /#app -->
+
+<!--
+  Script inline kecil: pasang info-btn yang ada di HTML statis (header kolom tabel).
+  Harus dijalankan setelah DOM siap; menggunakan event delegation agar berfungsi
+  bahkan setelah login.
+-->
+<script>
+  document.addEventListener("click", function(e) {
+    const btn = e.target.closest(".info-btn");
+    if (!btn) return;
+    e.stopPropagation();
+    const targetId = btn.dataset.infoId;
+    const popup    = document.getElementById(targetId);
+    if (!popup) return;
+    // Tutup popup lain
+    document.querySelectorAll(".info-popup:not(.hidden)").forEach(function(p) {
+      if (p.id !== targetId) p.classList.add("hidden");
+    });
+    popup.classList.toggle("hidden");
+  });
+</script>
 
 </body>
 </html>

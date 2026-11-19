@@ -119,6 +119,7 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
   font-weight: 500;
   font-size: 0.9rem;
   border: 1px solid transparent;
+  position: relative; /* untuk lencana angka */
 }
 
 .tab-btn:hover {
@@ -130,6 +131,24 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
   background: var(--color-primary);
   color: #fff;
   border-color: var(--color-primary);
+}
+
+/* Lencana angka merah di tombol tab Statistik */
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  background: var(--color-occupied);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 20px;
+  margin-left: 0.3rem;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 /* --- Warning Banner --- */
@@ -185,123 +204,280 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
   color: var(--color-text);
 }
 
-/* --- Meja Grid --- */
-.meja-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-}
+/* ============================================================
+   Denah Bioskop
+   ============================================================ */
 
-@media (min-width: 480px) {
-  .meja-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (min-width: 720px) {
-  .meja-grid { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* --- Meja Card --- */
-.meja-card {
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 1rem 1rem 0.85rem;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow .2s;
-}
-
-.meja-card:hover { box-shadow: var(--shadow-md); }
-
-.meja-card__header {
+.denah-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.6rem;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.meja-card__id {
-  font-weight: 700;
-  font-size: 1rem;
-}
-
-.meja-card__since {
-  font-size: 0.78rem;
+/* --- Legenda --- */
+.denah-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--color-text-muted);
-  margin-top: 0.25rem;
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.25rem;
 }
 
-/* --- Status Badge --- */
-.status-badge {
+.denah-legenda__item {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 0.2rem 0.6rem;
-  border-radius: 20px;
-  white-space: nowrap;
 }
 
-.status-badge--available {
-  background: var(--color-available-bg);
-  color: var(--color-available);
+.denah-legenda__dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.status-badge--occupied {
-  background: var(--color-occupied-bg);
-  color: var(--color-occupied);
+.denah-legenda__dot--available { background: var(--color-available); }
+.denah-legenda__dot--occupied  { background: var(--color-occupied); }
+.denah-legenda__dot--offline   { background: var(--color-offline); }
+
+/* --- Area Denah --- */
+.denah-area {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 0.75rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.status-badge--offline {
-  background: var(--color-offline-bg);
-  color: var(--color-offline);
-}
-
-.status-badge .icon { font-style: normal; font-size: 0.8rem; }
-
-/* --- Kursi Row --- */
-.kursi-list {
+.denah-baris {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: 1rem;
+  justify-content: center;
 }
 
-.kursi-chip {
-  display: inline-flex;
+/* --- Sel Meja --- */
+.denah-meja-cell {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  font-size: 0.8rem;
-  font-weight: 500;
-  padding: 0.25rem 0.65rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  gap: 0.4rem;
 }
 
-.kursi-chip--available {
+/* Kursi-kursi di atas meja */
+.denah-kursi-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* --- Tombol Kursi --- */
+.denah-kursi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 3.25rem;
+  min-height: 3.5rem;
+  padding: 0.4rem 0.3rem 0.3rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+  background: var(--color-offline-bg);
+  color: var(--color-offline);
+  cursor: pointer;
+  transition: transform .12s, box-shadow .12s;
+  font-size: 0;        /* sembunyikan teks label dari layout, tampilkan via span */
+}
+
+.denah-kursi svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.denah-kursi__label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.denah-kursi:hover, .denah-kursi:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.denah-kursi--available {
   background: var(--color-available-bg);
   color: var(--color-available);
   border-color: #bbf7d0;
 }
 
-.kursi-chip--occupied {
+.denah-kursi--occupied {
   background: var(--color-occupied-bg);
   color: var(--color-occupied);
   border-color: #fecaca;
 }
 
-.kursi-chip--offline {
+.denah-kursi--offline {
   background: var(--color-offline-bg);
   color: var(--color-offline);
   border-color: var(--color-border);
 }
 
+/* --- Tombol Meja --- */
+.denah-meja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 2.5px solid transparent;
+  cursor: pointer;
+  transition: transform .12s, box-shadow .12s;
+  text-align: center;
+}
+
+.denah-meja:hover, .denah-meja:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.denah-meja__id {
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.denah-meja__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.denah-meja--available {
+  background: var(--color-available-bg);
+  color: var(--color-available);
+  border-color: #bbf7d0;
+}
+
+.denah-meja--occupied {
+  background: var(--color-occupied-bg);
+  color: var(--color-occupied);
+  border-color: #fecaca;
+}
+
+.denah-meja--offline {
+  background: var(--color-offline-bg);
+  color: var(--color-offline);
+  border-color: var(--color-border);
+}
+
+/* --- Penanda Pintu Masuk --- */
+.denah-pintu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.denah-pintu__garis {
+  width: 60%;
+  max-width: 200px;
+  height: 3px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--color-text-muted) 0,
+    var(--color-text-muted) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+  border-radius: 2px;
+}
+
+.denah-pintu__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.03em;
+}
+
+/* --- Tooltip Denah --- */
+.denah-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem 0.6rem;
+  box-shadow: var(--shadow-md);
+  font-size: 0.85rem;
+  max-width: 220px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.denah-tooltip.hidden { display: none; }
+
+.denah-tooltip strong { font-size: 0.9rem; }
+
+.denah-tooltip__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+
+.denah-tooltip__since {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.denah-tooltip__close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.denah-tooltip__close:hover { background: var(--color-bg); color: var(--color-text); }
+
+.denah-tooltip--available { border-color: var(--color-available); }
+.denah-tooltip--occupied  { border-color: var(--color-occupied); }
+.denah-tooltip--offline   { border-color: var(--color-offline); }
+
+/* --- .icon helper --- */
+.icon { font-style: normal; font-size: 0.8rem; }
+
 /* --- Last Updated --- */
 .last-updated {
   font-size: 0.8rem;
   color: var(--color-text-muted);
-  margin-top: 1.25rem;
+  margin-top: 1rem;
   text-align: right;
 }
 
@@ -417,6 +593,205 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
 
 .login-error.hidden { display: none; }
 
+/* ============================================================
+   Panel Peringatan Staf
+   ============================================================ */
+
+.peringatan-panel {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-warn-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 1.25rem;
+}
+
+.peringatan-panel__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.peringatan-kosong {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.peringatan-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem;
+  border: 1px solid transparent;
+}
+
+.peringatan-item:last-child { margin-bottom: 0; }
+
+.peringatan-item--sistem {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.peringatan-item--esp32 {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.peringatan-item--sensor {
+  background: var(--color-warn-bg);
+  border-color: #fde68a;
+}
+
+.peringatan-item__ikon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.peringatan-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
+.peringatan-item__judul {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: block;
+}
+
+.peringatan-item__rincian {
+  color: var(--color-text-muted);
+  display: block;
+}
+
+.peringatan-since {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   Info Button (ⓘ) & Popup — Tab Statistik
+   ============================================================ */
+
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  background: transparent;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 50%;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  padding: 0;
+  cursor: pointer;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+
+.info-btn:hover, .info-btn:focus-visible {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.info-popup {
+  display: block;
+  background: var(--color-text);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  max-width: 220px;
+  margin-top: 0.4rem;
+  box-shadow: var(--shadow-md);
+  /* Tooltip muncul di bawah tombol, mengalir sesuai dokumen */
+  position: absolute;
+  z-index: 50;
+}
+
+.info-popup.hidden { display: none; }
+
+/* Container label kartu stat harus relative agar popup absolut bekerja */
+.stat-card__label { position: relative; }
+
+/* ============================================================
+   Istilah Detail (blok lipat)
+   ============================================================ */
+
+.istilah-detail {
+  margin: 0 0 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.istilah-detail__summary {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.istilah-detail__summary::-webkit-details-marker { display: none; }
+
+.istilah-detail__summary::before {
+  content: "▶ ";
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
+
+.istilah-detail[open] .istilah-detail__summary::before { content: "▼ "; }
+
+.istilah-list {
+  padding: 0.5rem 1.25rem 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.istilah-list dt {
+  font-weight: 600;
+  color: var(--color-text);
+  padding-top: 0.1rem;
+  white-space: nowrap;
+}
+
+.istilah-list dd {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Chart Section hint
+   ============================================================ */
+.chart-section__hint {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  margin-top: 0.1rem;
+}
+
 /* --- Stats Dashboard --- */
 .stats-header {
   display: flex;
@@ -522,6 +897,11 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
   height: 240px;
 }
 
+/* --- Stats Table with info buttons --- */
+.stats-table th {
+  position: relative; /* agar info-popup absolut bekerja di header kolom */
+}
+
 /* --- Meja Table --- */
 .table-section {
   background: var(--color-surface);
@@ -591,4 +971,19 @@ button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 
   .main { padding: 1rem 0.75rem 2rem; }
   .login-card { padding: 1.5rem 1.25rem; }
   .stat-card__value { font-size: 1.25rem; }
+
+  /* Denah: kursi sedikit lebih kecil di layar sangat sempit */
+  .denah-kursi { width: 2.85rem; min-height: 3.1rem; }
+  .denah-meja  { min-width: 4.5rem; }
+  .denah-baris { gap: 0.65rem; }
+
+  /* Istilah: stack satu kolom */
+  .istilah-list { grid-template-columns: 1fr; }
+  .istilah-list dt { margin-top: 0.4rem; }
+}
+
+/* Pastikan denah tidak memaksa scroll horizontal di 360px */
+.denah-area {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }

@@ -1,32 +1,15 @@
-# TableSpot
+# TableSpot -Smart Cafe Table Occupancy Display
 
 **Tema proyek:** Smart Cafe Table Occupancy Display
+
 **Mata kuliah:** Praktikum Internet of Things (IoT), Informatika UPN "Veteran" Yogyakarta, Semester Gasal 2026/2027
-**Kelompok:** _(isi nama kelompok dan anggota)_
 
----
-
-## Daftar Isi
-
-1. [Deskripsi Singkat](#deskripsi-singkat)
-2. [Arsitektur Sistem](#arsitektur-sistem)
-3. [Komponen](#komponen)
-4. [Struktur Repositori](#struktur-repositori)
-5. [Prasyarat](#prasyarat)
-6. [Langkah 1 - Persiapan Firebase](#langkah-1---persiapan-firebase)
-7. [Langkah 2 - Broker MQTT (Mosquitto)](#langkah-2---broker-mqtt-mosquitto)
-8. [Langkah 3 - Firmware ESP32](#langkah-3---firmware-esp32)
-9. [Langkah 4 - Bridge Python](#langkah-4---bridge-python)
-10. [Langkah 5 - Dashboard Web](#langkah-5---dashboard-web)
-11. [Alur Data dan Struktur Database](#alur-data-dan-struktur-database)
-12. [Fitur Dashboard](#fitur-dashboard)
-13. [Mengubah Tata Letak Denah](#mengubah-tata-letak-denah)
-14. [Aturan Peringatan](#aturan-peringatan)
-15. [Keamanan dan File yang Tidak Diunggah](#keamanan-dan-file-yang-tidak-diunggah)
-16. [Troubleshooting](#troubleshooting)
-17. [Tautan Hasil Akhir](#tautan-hasil-akhir)
-
----
+**Anggota Kelompok:**
+| Nama | NIM | 
+|---|---|---|
+| Muhammad Rifty Alfattah | 123240093 |
+| Muhamad Atallah Alfa Dzaky | 123240105 |
+| Munadhil Mutawakkil | 123240154 |
 
 ## Deskripsi Singkat
 

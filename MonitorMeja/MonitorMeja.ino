@@ -7,7 +7,7 @@
 // ============ GANTI INI ============
 const char* ssid        = "SSID WI-FI";
 const char* password    = "PASSWORD WIFI";
-const char* mqtt_server = "IP PC KAMU";  
+const char* mqtt_server = "MQTT SERVER";  
 // ===================================
 
 WiFiClient espClient;

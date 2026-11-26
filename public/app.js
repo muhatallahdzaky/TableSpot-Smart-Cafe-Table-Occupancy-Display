@@ -43,17 +43,19 @@ import { firebaseConfig }                       from "./firebase-config.js";
  *   3. Jangan ubah id meja / kursi — harus sesuai dengan data Firebase.
  */
 const LAYOUT = [
-  // Baris atas (jauh dari pintu)
-  [
-    { mejaId: "M1", kursi: ["K1", "K2"] },
-    { mejaId: "M2", kursi: ["K3", "K4"] },
-  ],
-  // Baris bawah (dekat pintu)
-  [
-    { mejaId: "M3", kursi: ["K5"] },
-    { mejaId: "M4", kursi: ["K6"] },
-    { mejaId: "M5", kursi: ["K7"] },
-  ],
+  { mejaId: "M3", kursi: ["K5"] },
+  { mejaId: "M4", kursi: ["K6"] },
+  { mejaId: "M5", kursi: ["K7"] },
+  { mejaId: "M2", kursi: ["K3", "K4"] },
+  { mejaId: "M1", kursi: ["K1", "K2"] },
+];
+const DENAH_GRID = [
+  [{ type: "meja", id: "M3" }, { type: "meja", id: "M4" }, { type: "meja", id: "M5" }],
+  [{ type: "kursi", id: "K5" }, { type: "kursi", id: "K6" }, { type: "kursi", id: "K7" }],
+  [{ type: "jalan", label: "JALAN" }],
+  [{ type: "kursi", id: "K3" }, null, { type: "kursi", id: "K1" }],
+  [{ type: "meja", id: "M2" }, null, { type: "meja", id: "M1" }],
+  [{ type: "kursi", id: "K4" }, null, { type: "kursi", id: "K2" }],
 ];
 
 /** Daftar meja datar — dipakai oleh fungsi-fungsi lain */
@@ -526,44 +528,40 @@ function renderDenah() {
  * @returns {string}
  */
 function buildDenahHTML() {
-  const baris = LAYOUT.map((row, iRow) => {
-    const mejaCells = row.map(({ mejaId, kursi }) =>
-      buildMejaCellHTML(mejaId, kursi)
-    ).join("");
-    return `<div class="denah-baris" data-baris="${iRow}">${mejaCells}</div>`;
+  const baris = DENAH_GRID.map((row, iRow) => {
+    if (row[0]?.type === "jalan") return `<div class="denah-grid-row denah-grid-row--jalan"><div class="denah-jalan">↔ &nbsp; JALAN / AREA AKSES &nbsp; ↔</div></div>`;
+    const cells = Array.from({ length: 3 }, (_, col) => {
+      const item = row[col];
+      if (!item) return `<div class="denah-grid-cell denah-grid-cell--empty" aria-hidden="true"></div>`;
+      if (item.type === "meja") return `<div class="denah-grid-cell">${buildMejaOnlyHTML(item.id)}</div>`;
+      return `<div class="denah-grid-cell">${buildKursiOnlyHTML(item.id)}</div>`;
+    }).join("");
+    return `<div class="denah-grid-row" data-baris="${iRow}">${cells}</div>`;
   }).join("");
+  const legendaHTML = `<div class="denah-legenda" aria-label="Legenda status">
+    <span class="denah-legenda__item"><span class="denah-legenda__dot denah-legenda__dot--available"></span> Kosong</span>
+    <span class="denah-legenda__item"><span class="denah-legenda__dot denah-legenda__dot--occupied"></span> Terisi</span>
+    <span class="denah-legenda__item"><span class="denah-legenda__dot denah-legenda__dot--offline"></span> Offline</span>
+  </div>`;
+  return `<div class="denah-wrapper">
+    <div class="denah-orientation"><span>↑</span><strong>UTARA</strong><small>Bagian depan kafe</small></div>
+    ${legendaHTML}
+    <div class="denah-area denah-area--grid" id="denah-area" role="group" aria-label="Denah kafe menghadap utara, grid tiga kolom enam baris">${baris}</div>
+    <div class="denah-pintu"><div class="denah-pintu__garis"></div><span class="denah-pintu__label">🚪 Pintu Masuk</span></div>
+    <div id="denah-tooltip" class="denah-tooltip hidden" role="status" aria-live="polite"></div>
+  </div>`;
+}
 
-  const legendaHTML = `
-    <div class="denah-legenda" aria-label="Legenda status">
-      <span class="denah-legenda__item">
-        <span class="denah-legenda__dot denah-legenda__dot--available"></span>
-        <span class="icon" aria-hidden="true">✓</span> Kosong
-      </span>
-      <span class="denah-legenda__item">
-        <span class="denah-legenda__dot denah-legenda__dot--occupied"></span>
-        <span class="icon" aria-hidden="true">●</span> Terisi
-      </span>
-      <span class="denah-legenda__item">
-        <span class="denah-legenda__dot denah-legenda__dot--offline"></span>
-        <span class="icon" aria-hidden="true">○</span> Offline
-      </span>
-    </div>`;
+function buildMejaOnlyHTML(mejaId) {
+  const status = state.tables[mejaId]?.status || "offline";
+  return `<button class="denah-meja denah-meja--${classStatus(status)}" data-denah-id="${esc(mejaId)}" data-denah-tipe="meja" aria-label="Meja ${esc(mejaId)}, ${esc(labelStatus(status))}" type="button">
+    <span class="denah-meja__icon">▦</span><span class="denah-meja__id">${esc(mejaId)}</span><span class="denah-meja__badge">${esc(labelStatus(status))}</span></button>`;
+}
 
-  const pintuHTML = `
-    <div class="denah-pintu" aria-label="Pintu masuk kafe">
-      <div class="denah-pintu__garis"></div>
-      <span class="denah-pintu__label">🚪 Pintu Masuk</span>
-    </div>`;
-
-  return `
-    <div class="denah-wrapper">
-      ${legendaHTML}
-      <div class="denah-area" id="denah-area" role="img" aria-label="Denah kafe — klik meja atau kursi untuk keterangan">
-        ${baris}
-      </div>
-      ${pintuHTML}
-      <div id="denah-tooltip" class="denah-tooltip hidden" role="status" aria-live="polite"></div>
-    </div>`;
+function buildKursiOnlyHTML(kursiId) {
+  const status = state.seats[kursiId]?.status || "offline";
+  return `<button class="denah-kursi denah-kursi--${classStatus(status)}" data-denah-id="${esc(kursiId)}" data-denah-tipe="kursi" aria-label="Kursi ${esc(kursiId)}, ${esc(labelStatus(status))}" type="button">
+    ${svgKursi()}<span class="denah-kursi__label">${esc(kursiId)}</span><span class="denah-kursi__state">${esc(labelStatus(status))}</span></button>`;
 }
 
 /**
@@ -947,12 +945,21 @@ function renderStatsChart() {
     chartInstance = null;
   }
 
-  if (typeof Chart === "undefined") {
-    console.warn("[Tablespot] Chart.js belum dimuat.");
+  // Chart.js dimuat sebagai script UMD di index.html.
+  // Gunakan window.Chart agar akses global dari ES module lebih eksplisit.
+  const ChartJS = window.Chart;
+  if (typeof ChartJS !== "function") {
+    console.error("[Tablespot] Chart.js tidak tersedia. Periksa koneksi/CDN di tab Network.");
+    canvas.style.display = "none";
+    if (noDataMsg) {
+      noDataMsg.textContent = "Grafik gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.";
+      noDataMsg.style.display = "";
+    }
     return;
   }
 
-  chartInstance = new Chart(canvas, {
+  try {
+    chartInstance = new ChartJS(canvas, {
     type: "bar",
     data: {
       labels,
@@ -991,7 +998,15 @@ function renderStatsChart() {
         },
       },
     },
-  });
+    });
+  } catch (error) {
+    console.error("[Tablespot] Gagal membuat grafik:", error);
+    canvas.style.display = "none";
+    if (noDataMsg) {
+      noDataMsg.textContent = "Grafik tidak dapat ditampilkan. Silakan muat ulang halaman.";
+      noDataMsg.style.display = "";
+    }
+  }
 }
 
 /**

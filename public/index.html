@@ -10,13 +10,12 @@
   <link rel="stylesheet" href="style.css" />
 
   <!--
-    Chart.js v4.4.3 — CDN cdnjs, versi dipin.
-    Dimuat SEBELUM app.js agar window.Chart tersedia saat grafik dirender.
+    Chart.js UMD dimuat sebelum app.js.
+    Jika CDN utama gagal, browser mencoba CDN cadangan.
   -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"
-          integrity="sha512-KE2k/6I8OwxeE31vf0+RBW2gMpxRz1tfsmXn6sSoOd7VVpTdqJh7+LGVaRuQZLhBMsYuADYXm1z/9ZPGFDqA=="
-          crossorigin="anonymous"
-          referrerpolicy="no-referrer">
+  <script
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+    onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js';">
   </script>
 
   <!--
@@ -82,7 +81,7 @@
       role="tabpanel"
       aria-labelledby="tab-denah">
 
-      <h1 class="section-title">Denah Kafe</h1>
+      <div class="page-heading"><div><p class="page-eyebrow">TABLESPOT · LIVE MONITORING</p><h1 class="section-title">Denah Kafe</h1><p class="page-description">Pantau ketersediaan meja dan kursi secara langsung.</p></div><span class="live-indicator"><i></i> Real-time</span></div>
 
       <!-- Ringkasan kursi & meja kosong -->
       <div id="summary-bar" class="summary-bar" aria-live="polite" aria-label="Ringkasan ketersediaan">

@@ -75,3 +75,8 @@ serviceAccount*.json
 *-firebase-adminsdk-*.json
 *.json.key
 .firebase/
+env/
+serviceAccount.json
+serviceAccount2.json
+__pycache__/
+dashboard.html

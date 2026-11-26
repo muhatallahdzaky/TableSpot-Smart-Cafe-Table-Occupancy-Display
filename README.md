@@ -6,7 +6,7 @@
 
 **Anggota Kelompok:**
 | Nama | NIM | 
-|---|---|---|
+|---|---|
 | Muhammad Rifty Alfattah | 123240093 |
 | Muhamad Atallah Alfa Dzaky | 123240105 |
 | Munadhil Mutawakkil | 123240154 |

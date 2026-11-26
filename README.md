@@ -11,6 +11,14 @@
 | Muhamad Atallah Alfa Dzaky | 123240105 |
 | Munadhil Mutawakkil | 123240154 |
 
+## Tautan Hasil Akhir
+
+- Video demonstrasi: _(isi tautan YouTube)_
+- Artikel Medium: _(isi tautan Medium)_
+- Dashboard: https://tablespot-cafe.web.app
+
+---
+
 ## Deskripsi Singkat
 
 TableSpot adalah sistem IoT untuk memantau ketersediaan meja dan kursi di sebuah kafe secara real-time. Sensor ultrasonik HC-SR04 di setiap kursi mendeteksi apakah kursi sedang diduduki. ESP32 mengirim hasilnya lewat MQTT ke sebuah bridge Python, lalu bridge meneruskannya ke Firebase Realtime Database. Pengunjung bisa melihat denah meja dari mana saja lewat dashboard web, sedangkan staf yang login bisa melihat statistik pemakaian dan peringatan jika sensor atau sistem bermasalah. Status meja juga tampil langsung di kafe lewat LED merah/hijau dan LCD 16x2.
@@ -462,14 +470,6 @@ Keamanan data di sisi cloud diatur oleh rules Realtime Database (lihat Langkah 1
 | Login gagal | Email/password salah atau akun belum dibuat | Buat akun di Firebase Console, Authentication, Users |
 | LCD kosong | Alamat I2C atau pin SDA/SCL tidak sesuai | Cek alamat (0x27) dan pin SDA 8 / SCL 9 |
 | Sensor selalu terbaca error | Kabel TRIG/ECHO longgar | Periksa kabel dan pin sesuai tabel konfigurasi pin |
-
----
-
-## Tautan Hasil Akhir
-
-- Video demonstrasi: _(isi tautan YouTube)_
-- Artikel Medium: _(isi tautan Medium)_
-- Dashboard: https://tablespot-cafe.web.app
 
 ---
 

@@ -72,23 +72,21 @@ HC-SR04 x7 -> ESP32 -> (WiFi, MQTT) -> Mosquitto -> Bridge Python -> Firebase Re
 ```
 TableSpot/
 ├── README.md
+├── requirements.txt
+├── firebase.json                # konfigurasi Firebase Hosting
+├── .firebaserc                  # proyek Firebase yang dipakai
 ├── .gitignore
-├── firmware/
-│   └── MonitorMeja/
-│       └── MonitorMeja.ino          # program ESP32 (sensor, LED, LCD, MQTT)
-├── bridge/
-│   ├── bridge2.py                   # bridge MQTT -> Firebase (program utama)
-│   ├── stats_engine.py              # penghitung statistik pemakaian harian
-│   └── requirements.txt             # dependensi Python
-└── dashboard/
-    ├── firebase.json                # konfigurasi Firebase Hosting
-    ├── .firebaserc                  # proyek Firebase yang dipakai
-    └── public/
-        ├── index.html               # halaman tunggal (SPA)
-        ├── style.css                # semua gaya antarmuka
-        ├── app.js                   # logika utama (ES module)
-        ├── firebase-config.example.js   # contoh format konfigurasi
-        └── firebase-config.js       # konfigurasi asli (BUAT SENDIRI, tidak di-commit)
+├── MonitorMeja/
+│   └── MonitorMeja.ino          # program ESP32 (sensor, LED, LCD, MQTT)
+├── BridgePython/
+│   ├── bridgeProgram.py                # bridge MQTT -> Firebase (program utama)
+│   ├── statisticEngine.py              # penghitung statistik pemakaian harian
+└── public/
+    ├── index.html                   # halaman tunggal (SPA)
+    ├── style.css                    # semua gaya antarmuka
+    ├── app.js                       # logika utama (ES module)
+    ├── firebase-config.example.js   # contoh format konfigurasi
+    └── firebase-config.js           # konfigurasi asli (BUAT SENDIRI, tidak di-commit)
 ```
 
 ---

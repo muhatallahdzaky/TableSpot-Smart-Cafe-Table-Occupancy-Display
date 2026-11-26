@@ -80,3 +80,4 @@ serviceAccount.json
 serviceAccount2.json
 __pycache__/
 dashboard.html
+.vscode/

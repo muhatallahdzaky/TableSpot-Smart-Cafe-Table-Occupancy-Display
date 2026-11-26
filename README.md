@@ -80,7 +80,7 @@ TableSpot/
 │   └── MonitorMeja.ino          # program ESP32 (sensor, LED, LCD, MQTT)
 ├── BridgePython/
 │   ├── bridgeProgram.py                # bridge MQTT -> Firebase (program utama)
-│   ├── statisticEngine.py              # penghitung statistik pemakaian harian
+│   └── statisticEngine.py              # penghitung statistik pemakaian harian
 └── public/
     ├── index.html                   # halaman tunggal (SPA)
     ├── style.css                    # semua gaya antarmuka
